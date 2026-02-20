@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 3000;
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// Setari automate pentru VPS (Linux) sau PC (Windows)
+// SETARI AUTOMATE PC / VPS
 const isWindows = process.platform === 'win32';
 const YTDLP_PATH = isWindows ? path.join(__dirname, 'yt-dlp.exe') : '/usr/local/bin/yt-dlp';
 const FFMPEG_PATH = isWindows ? path.join(__dirname, 'ffmpeg.exe') : '/usr/bin/ffmpeg';
@@ -23,23 +23,31 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public'))); 
 
-// Daca pui cookies.txt le va folosi automat, dar functioneaza si fara!
+// Daca exista cookies.txt, il bagam in ecuatie
 const cookiesPath = path.join(__dirname, 'cookies.txt');
 const cookiesArg = fs.existsSync(cookiesPath) ? `--cookies "${cookiesPath}"` : "";
+
+// ==========================================
+// ARMA SECRETA ANTI-VPS BLOCK
+// 1. --force-ipv4 -> Evita ban-urile IPV6 ale datacenterelor
+// 2. --extractor-args "youtube:player_client=ios,tv" -> Fenteaza BotGuard
+// 3. --no-warnings -> Ascunde mesajele inutile
+// ==========================================
+const bypassArgs = `--force-ipv4 --extractor-args "youtube:player_client=ios,tv" --no-warnings`;
+
 
 // --- LOGICA PENTRU TRANSCRIPT ---
 const getTranscriptAndSummary = async (url) => {
     return new Promise((resolve) => {
-        // Folosim clientul "android" care are cele mai mici sanse de blocare pe VPS
-        const command = `"${YTDLP_PATH}" ${cookiesArg} --write-auto-sub --skip-download --sub-lang en,ro --convert-subs vtt --extractor-args "youtube:player_client=android" --output "${path.join(DOWNLOAD_DIR, 'temp_%(id)s')}" "${url}"`;
+        const command = `"${YTDLP_PATH}" ${cookiesArg} ${bypassArgs} --write-auto-sub --skip-download --sub-lang en,ro --convert-subs vtt --output "${path.join(DOWNLOAD_DIR, 'temp_%(id)s')}" "${url}"`;
         
-        exec(command, async (error, stdout, stderr) => {
+        // AM ADAUGAT maxBuffer: Opreste Node.js din a bloca procesul daca yt-dlp e "prea vorbaret"
+        exec(command, { maxBuffer: 1024 * 1024 * 10 }, async (error, stdout, stderr) => {
             const files = fs.readdirSync(DOWNLOAD_DIR).filter(f => f.startsWith('temp_') && f.endsWith('.vtt'));
             
             let cleanText = "";
             if (files.length === 0) {
-                // Dacă nu există subtitrare, NU stăm să așteptăm DUMP-JSON (care dă timeout). Trecem mai departe rapid.
-                resolve({ text: "Nu s-a găsit subtitrare oficială pentru acest videoclip." });
+                resolve({ text: "Nu s-a găsit subtitrare pentru acest videoclip." });
                 return;
             } else {
                 const vttPath = path.join(DOWNLOAD_DIR, files[0]);
@@ -50,17 +58,16 @@ const getTranscriptAndSummary = async (url) => {
             }
 
             try {
-                // Generam rezumatul super rapid cu GPT
                 const completion = await openai.chat.completions.create({
                     messages: [
-                        { role: "system", content: "Ești un asistent util care extrage ideile principale." },
-                        { role: "user", content: `Te rog tradu și rezumă textul acesta în română, în 2-3 idei principale (fii concis):\n\n${cleanText.substring(0, 4000)}` }
+                        { role: "system", content: "Ești un asistent util." },
+                        { role: "user", content: `Tradu și rezumă textul acesta în română, în 2-3 idei principale:\n\n${cleanText.substring(0, 4000)}` }
                     ],
-                    model: "gpt-4o-mini", // Model super rapid
+                    model: "gpt-4o-mini", 
                 });
                 resolve({ text: completion.choices[0].message.content });
             } catch (e) {
-                resolve({ text: "Eroare la procesarea textului cu AI." });
+                resolve({ text: "Eroare AI: Nu s-a putut traduce textul." });
             }
         });
     });
@@ -72,7 +79,7 @@ app.post('/api/process-yt', async (req, res) => {
     let { url } = req.body;
     if (!url) return res.status(400).json({ error: 'URL lipsă' });
 
-    // Fentam protectia pentru Shorts transformand linkul in Video Normal
+    // Fentam Shorts
     if (url.includes('/shorts/')) {
         url = url.replace('/shorts/', '/watch?v=').split('&')[0].split('?feature')[0];
     }
@@ -84,25 +91,24 @@ app.post('/api/process-yt', async (req, res) => {
     try {
         const ffmpegArg = isWindows ? `--ffmpeg-location "${FFMPEG_PATH}"` : "";
         
-        // Comanda optimizata pt viteza si bypass:
-        // Setam calitatea la maxim 1080p, folosim "android", si scurtam formatul pt a evita merge-ul greoi de ffmpeg daca nu e nevoie
-        const command = `"${YTDLP_PATH}" ${ffmpegArg} ${cookiesArg} -f "b[ext=mp4]/best" -o "${outputPath}" --extractor-args "youtube:player_client=android" --no-check-certificates --no-playlist "${url}"`;
+        // Comanda MEGA-OPTIMIZATA de download
+        const command = `"${YTDLP_PATH}" ${ffmpegArg} ${cookiesArg} ${bypassArgs} -f "b[ext=mp4]/best" -o "${outputPath}" --no-check-certificates --no-playlist "${url}"`;
         
-        // Preluam textul (Dureaza ~3 secunde)
         const aiData = await getTranscriptAndSummary(url);
 
-        // NU MAI GENERAM AUDIO AICI! Asta dadea Timeout-ul ("read tcp4"). Ne concentram pe Download si Text.
-        
-        exec(command, (error, stdout, stderr) => {
+        console.log(`[INFO] Descarcare video in curs...`);
+        // AM ADAUGAT maxBuffer si aici!
+        exec(command, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
             if (error) {
-                console.error("Eroare yt-dlp pe VPS:", stderr);
-                return res.status(500).json({ error: `Eroare descărcare. Serverul YouTube a refuzat conexiunea.` });
+                console.error("Eroare VPS:", stderr || error.message);
+                // Trimitem eroarea exact in browser ca sa stii daca te-a blocat
+                return res.status(500).json({ error: "YouTube a blocat conexiunea. Încearcă alt video sau actualizează cookies." });
             }
             
             res.json({
                 status: 'ok',
                 downloadUrl: `/download/${videoId}.mp4`,
-                audioUrl: null, // Am scos audio-ul ca sa mearga instant
+                audioUrl: null, // Dezactivat momentan ca sa ruleze brici
                 aiSummary: aiData.text
             });
         });
@@ -122,5 +128,5 @@ app.get('/download/:filename', (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 VIRALIO (Versiunea Optimizată) rulează pe http://localhost:${PORT}`);
+    console.log(`🚀 VIRALIO (SaaS) rulează pe http://localhost:${PORT}`);
 });
