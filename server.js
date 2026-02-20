@@ -23,31 +23,31 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public'))); 
 
-// Daca exista cookies.txt, il bagam in ecuatie
-const cookiesPath = path.join(__dirname, 'cookies.txt');
-const cookiesArg = fs.existsSync(cookiesPath) ? `--cookies "${cookiesPath}"` : "";
+// ==========================================
+// ARTILERIA GREA: PROXY REZIDENȚIAL FORȚAT
+// ==========================================
+// Am pus proxy-ul pe care l-ai dat. YouTube te va vedea prin acest IP.
+const PROXY_URL = "http://jidqrlsg:8acghm3viqfp@31.59.20.176:6754/"; 
+const proxyArg = `--proxy "${PROXY_URL}"`;
 
-// ==========================================
-// ARMA SECRETA ANTI-VPS BLOCK
-// 1. --force-ipv4 -> Evita ban-urile IPV6 ale datacenterelor
-// 2. --extractor-args "youtube:player_client=ios,tv" -> Fenteaza BotGuard
-// 3. --no-warnings -> Ascunde mesajele inutile
-// ==========================================
-const bypassArgs = `--force-ipv4 --extractor-args "youtube:player_client=ios,tv" --no-warnings`;
+// Setări de Bypass + Proxy. 
+// Am scos cookies ca sa nu facem conflicte (Google uraste proxy combinat cu cookies locale).
+const bypassArgs = `${proxyArg} --force-ipv4 --extractor-args "youtube:player_client=web" --no-warnings`;
 
 
 // --- LOGICA PENTRU TRANSCRIPT ---
 const getTranscriptAndSummary = async (url) => {
     return new Promise((resolve) => {
-        const command = `"${YTDLP_PATH}" ${cookiesArg} ${bypassArgs} --write-auto-sub --skip-download --sub-lang en,ro --convert-subs vtt --output "${path.join(DOWNLOAD_DIR, 'temp_%(id)s')}" "${url}"`;
+        const command = `"${YTDLP_PATH}" ${bypassArgs} --write-auto-sub --skip-download --sub-lang en,ro --convert-subs vtt --output "${path.join(DOWNLOAD_DIR, 'temp_%(id)s')}" "${url}"`;
         
-        // AM ADAUGAT maxBuffer: Opreste Node.js din a bloca procesul daca yt-dlp e "prea vorbaret"
-        exec(command, { maxBuffer: 1024 * 1024 * 10 }, async (error, stdout, stderr) => {
+        console.log(`[INFO] Extragere subtitrare prin PROXY...`);
+        // Timeout 60s pt transcript
+        exec(command, { maxBuffer: 1024 * 1024 * 10, timeout: 60000 }, async (error, stdout, stderr) => {
             const files = fs.readdirSync(DOWNLOAD_DIR).filter(f => f.startsWith('temp_') && f.endsWith('.vtt'));
             
             let cleanText = "";
             if (files.length === 0) {
-                resolve({ text: "Nu s-a găsit subtitrare pentru acest videoclip." });
+                resolve({ text: "Nu s-a găsit subtitrare oficială. (Sau proxy-ul a răspuns prea greu)" });
                 return;
             } else {
                 const vttPath = path.join(DOWNLOAD_DIR, files[0]);
@@ -84,31 +84,35 @@ app.post('/api/process-yt', async (req, res) => {
         url = url.replace('/shorts/', '/watch?v=').split('&')[0].split('?feature')[0];
     }
     
-    console.log(`[START] Procesare pe VPS: ${url}`);
+    console.log(`[START] Procesare pe VPS cu PROXY: ${url}`);
     const videoId = Date.now();
     const outputPath = path.join(DOWNLOAD_DIR, `${videoId}.mp4`);
 
     try {
         const ffmpegArg = isWindows ? `--ffmpeg-location "${FFMPEG_PATH}"` : "";
         
-        // Comanda MEGA-OPTIMIZATA de download
-        const command = `"${YTDLP_PATH}" ${ffmpegArg} ${cookiesArg} ${bypassArgs} -f "b[ext=mp4]/best" -o "${outputPath}" --no-check-certificates --no-playlist "${url}"`;
+        // Comanda DOWNLOAD prin PROXY
+        const command = `"${YTDLP_PATH}" ${ffmpegArg} ${bypassArgs} -f "b[ext=mp4]/best" -o "${outputPath}" --no-check-certificates --no-playlist "${url}"`;
         
         const aiData = await getTranscriptAndSummary(url);
 
-        console.log(`[INFO] Descarcare video in curs...`);
-        // AM ADAUGAT maxBuffer si aici!
-        exec(command, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
+        console.log(`[INFO] Descarcare video in curs prin PROXY...`);
+        
+        // Timeout 3 minute (180000 ms) pt descarcare video
+        exec(command, { maxBuffer: 1024 * 1024 * 10, timeout: 180000 }, (error, stdout, stderr) => {
             if (error) {
-                console.error("Eroare VPS:", stderr || error.message);
-                // Trimitem eroarea exact in browser ca sa stii daca te-a blocat
-                return res.status(500).json({ error: "YouTube a blocat conexiunea. Încearcă alt video sau actualizează cookies." });
+                console.error("Eroare Download Proxy:", stderr || error.message);
+                if (error.killed) {
+                    return res.status(500).json({ error: "Eroare: Proxy-ul s-a mișcat prea greu (Timeout)." });
+                }
+                return res.status(500).json({ error: "Eroare YouTube: Proxy-ul a fost blocat sau este invalid." });
             }
             
+            console.log(`[SUCCES] Video descarcat: ${videoId}.mp4`);
             res.json({
                 status: 'ok',
                 downloadUrl: `/download/${videoId}.mp4`,
-                audioUrl: null, // Dezactivat momentan ca sa ruleze brici
+                audioUrl: null, 
                 aiSummary: aiData.text
             });
         });
@@ -128,5 +132,5 @@ app.get('/download/:filename', (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 VIRALIO (SaaS) rulează pe http://localhost:${PORT}`);
+    console.log(`🚀 VIRALIO (SaaS PROXY) rulează pe http://localhost:${PORT}`);
 });
