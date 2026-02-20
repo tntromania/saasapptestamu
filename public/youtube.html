@@ -102,11 +102,12 @@
             errorMsg.classList.add('hidden');
 
             try {
-                const res = await fetch('/api/process-yt', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url })
-                });
+// Am pus link-ul tau de la Coolify + /api/process-yt
+            const res = await fetch('https://e8cs8wccocg4k4csgoos44o4.46.224.193.91.sslip.io/api/process-yt', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url })
+            });
                 
                 // Inlocuieste "const data = await res.json();" cu:
             const responseText = await res.text(); // Luam intai raspunsul brut (text)

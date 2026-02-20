@@ -17,7 +17,9 @@ const DOWNLOAD_DIR = path.join(__dirname, 'downloads');
 
 if (!fs.existsSync(DOWNLOAD_DIR)) fs.mkdirSync(DOWNLOAD_DIR);
 
-app.use(cors());
+app.use(cors({
+    origin: '*' 
+}));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public'))); 
 
