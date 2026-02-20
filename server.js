@@ -11,7 +11,6 @@ const PORT = process.env.PORT || 3000;
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// SETARI AUTOMATE PC / VPS
 const isWindows = process.platform === 'win32';
 const YTDLP_PATH = isWindows ? path.join(__dirname, 'yt-dlp.exe') : '/usr/local/bin/yt-dlp';
 const FFMPEG_PATH = isWindows ? path.join(__dirname, 'ffmpeg.exe') : '/usr/bin/ffmpeg';
@@ -24,16 +23,13 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public'))); 
 
 // ==========================================
-// ARTILERIA GREA: PROXY REZIDENȚIAL FORȚAT
+// PROXY-UL TAU DE LA WEBSHARE
 // ==========================================
-// Am pus proxy-ul pe care l-ai dat. YouTube te va vedea prin acest IP.
-const PROXY_URL = "http://jidqrlsg:8acghm3viqfp@31.59.20.176:6754/"; 
+const PROXY_URL = "http://jidqrlsg:8acghm3viqfp@64.137.96.74:6641/"; 
 const proxyArg = `--proxy "${PROXY_URL}"`;
 
-// Setări de Bypass + Proxy. 
-// Am scos cookies ca sa nu facem conflicte (Google uraste proxy combinat cu cookies locale).
-const bypassArgs = `${proxyArg} --force-ipv4 --extractor-args "youtube:player_client=web" --no-warnings`;
-
+// Bypass suprem: fortam IPv4, evitam blocajele geografice si folosim iOS (cel mai putin blocat client)
+const bypassArgs = `${proxyArg} --force-ipv4 --geo-bypass --extractor-args "youtube:player_client=ios" --no-warnings`;
 
 // --- LOGICA PENTRU TRANSCRIPT ---
 const getTranscriptAndSummary = async (url) => {
@@ -41,13 +37,12 @@ const getTranscriptAndSummary = async (url) => {
         const command = `"${YTDLP_PATH}" ${bypassArgs} --write-auto-sub --skip-download --sub-lang en,ro --convert-subs vtt --output "${path.join(DOWNLOAD_DIR, 'temp_%(id)s')}" "${url}"`;
         
         console.log(`[INFO] Extragere subtitrare prin PROXY...`);
-        // Timeout 60s pt transcript
         exec(command, { maxBuffer: 1024 * 1024 * 10, timeout: 60000 }, async (error, stdout, stderr) => {
             const files = fs.readdirSync(DOWNLOAD_DIR).filter(f => f.startsWith('temp_') && f.endsWith('.vtt'));
             
             let cleanText = "";
             if (files.length === 0) {
-                resolve({ text: "Nu s-a găsit subtitrare oficială. (Sau proxy-ul a răspuns prea greu)" });
+                resolve({ text: "Nu s-a găsit subtitrare oficială (sau proxy-ul a răspuns greu)." });
                 return;
             } else {
                 const vttPath = path.join(DOWNLOAD_DIR, files[0]);
@@ -73,13 +68,11 @@ const getTranscriptAndSummary = async (url) => {
     });
 };
 
-
 // --- ENDPOINT PROCESARE VIDEO ---
 app.post('/api/process-yt', async (req, res) => {
     let { url } = req.body;
     if (!url) return res.status(400).json({ error: 'URL lipsă' });
 
-    // Fentam Shorts
     if (url.includes('/shorts/')) {
         url = url.replace('/shorts/', '/watch?v=').split('&')[0].split('?feature')[0];
     }
@@ -98,14 +91,13 @@ app.post('/api/process-yt', async (req, res) => {
 
         console.log(`[INFO] Descarcare video in curs prin PROXY...`);
         
-        // Timeout 3 minute (180000 ms) pt descarcare video
         exec(command, { maxBuffer: 1024 * 1024 * 10, timeout: 180000 }, (error, stdout, stderr) => {
             if (error) {
                 console.error("Eroare Download Proxy:", stderr || error.message);
                 if (error.killed) {
-                    return res.status(500).json({ error: "Eroare: Proxy-ul s-a mișcat prea greu (Timeout)." });
+                    return res.status(500).json({ error: "Proxy-ul de la WebShare s-a mișcat prea greu și conexiunea a expirat." });
                 }
-                return res.status(500).json({ error: "Eroare YouTube: Proxy-ul a fost blocat sau este invalid." });
+                return res.status(500).json({ error: "Eroare YouTube: Proxy-ul tău este banat/recunoscut ca Bot de YouTube." });
             }
             
             console.log(`[SUCCES] Video descarcat: ${videoId}.mp4`);

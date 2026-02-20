@@ -108,7 +108,18 @@
                     body: JSON.stringify({ url })
                 });
                 
-                const data = await res.json();
+                // Inlocuieste "const data = await res.json();" cu:
+            const responseText = await res.text(); // Luam intai raspunsul brut (text)
+            let data;
+            
+            try {
+                data = JSON.parse(responseText); // Incercam sa-l facem JSON
+            } catch (parseError) {
+                // Daca VPS-ul a picat sau a dat eroare de retea (read tcp4)
+                throw new Error("Eroare severă de la serverul Coolify (Posibil Timeout pentru că Proxy-ul a mers prea greu).");
+            }
+
+            if (!res.ok) throw new Error(data.error || "Eroare necunoscută.");
                 if (!res.ok) throw new Error(data.error);
 
                 document.getElementById('dl-video').href = data.downloadUrl;
