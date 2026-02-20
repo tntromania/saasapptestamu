@@ -21,17 +21,13 @@ app.use(cors({ origin: '*' }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public'))); 
 
-// =======================================================
-// CONSTRUCTIA CORECTA A PROXY-ULUI EVOMI (STICKY SESSION)
-// =======================================================
-// Generam o sesiune unica pt fiecare descarcare (ca IP-ul sa ramana acelasi pe durata download-ului)
-const generateSessionId = () => Math.random().toString(36).substring(2, 10);
-
-// Setarile de bypass anti-bot
+// DATELE TALE EXACTE PENTRU EVOMI:
+const PROXY_URL = `http://banicualex6:MGqdTRZRtftV80I9MhSD@core-residential.evomi.com:1000`;
+const proxyArg = `--proxy "${PROXY_URL}"`;
 const bypassArgs = `--force-ipv4 --extractor-args "youtube:player_client=android" --no-warnings`;
 
 // --- LOGICA PENTRU TRANSCRIPT ---
-const getTranscriptAndSummary = async (url, proxyArg) => {
+const getTranscriptAndSummary = async (url) => {
     return new Promise((resolve) => {
         const command = `"${YTDLP_PATH}" ${proxyArg} ${bypassArgs} --write-auto-sub --skip-download --sub-lang en,ro --convert-subs vtt --output "${path.join(DOWNLOAD_DIR, 'temp_%(id)s')}" "${url}"`;
         
@@ -72,15 +68,7 @@ app.post('/api/process-yt', async (req, res) => {
         url = url.replace('/shorts/', '/watch?v=').split('&')[0].split('?feature')[0];
     }
     
-    // FORMATAM PROXY-UL CORECT: http://USER:PASS@HOST:PORT
-    // Adaugam _session-ID la username ca sa pastram IP-ul pe loc cat timp descarcam
-    const sessionId = generateSessionId();
-    // In caz ca parola din poza ta era mai lunga, asigura-te ca e toata aici:
-    const PROXY_URL = `http://banicualex6_session-${sessionId}:MGqdTRZRtftV80I9MhSD@core-residential.evomi.com:1000`;
-    const proxyArg = `--proxy "${PROXY_URL}"`;
-
     console.log(`[START] Procesare domeniu: ${url}`);
-    console.log(`[INFO] Sesiune Proxy Creata: ${sessionId}`);
     
     const videoId = Date.now();
     const outputPath = path.join(DOWNLOAD_DIR, `${videoId}.mp4`);
@@ -89,14 +77,14 @@ app.post('/api/process-yt', async (req, res) => {
         const ffmpegArg = isWindows ? `--ffmpeg-location "${FFMPEG_PATH}"` : "";
         const command = `"${YTDLP_PATH}" ${proxyArg} ${ffmpegArg} ${bypassArgs} -f "b[ext=mp4]/best" -o "${outputPath}" --no-check-certificates --no-playlist "${url}"`;
         
-        const aiData = await getTranscriptAndSummary(url, proxyArg);
+        const aiData = await getTranscriptAndSummary(url);
 
-        console.log(`[INFO] Se descarcă MP4 cu IP de casa...`);
+        console.log(`[INFO] Se descarcă MP4 cu IP rezidențial Evomi...`);
         
         exec(command, { maxBuffer: 1024 * 1024 * 10, timeout: 180000 }, async (error, stdout, stderr) => {
             if (error) {
                 console.error(`[EROARE] Detalii eroare:`, stderr);
-                return res.status(500).json({ error: "Conexiune refuzată de proxy sau timeout." });
+                return res.status(500).json({ error: "Eroare la descărcare. Serverul YouTube a refuzat conexiunea." });
             }
             
             console.log(`[SUCCES] Video descărcat perfect!`);
@@ -122,5 +110,5 @@ app.get('/download/:filename', (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 VIRALIO rulează cu Evomi Proxy.`);
+    console.log(`🚀 VIRALIO rulează cu Evomi Proxy (Raw).`);
 });
