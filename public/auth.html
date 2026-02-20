@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <title>Viralio | Autentificare</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>body { background-color: #030712; color: white; }</style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-6">
+
+    <div class="bg-white/5 border border-white/10 max-w-md w-full p-8 rounded-3xl shadow-2xl backdrop-blur-md">
+        <div class="text-center mb-8">
+            <a href="/" class="text-2xl font-black text-indigo-500"><i class="fas fa-bolt"></i> VIRALIO</a>
+        </div>
+        
+        <h2 id="title" class="text-2xl font-bold mb-6 text-center">Intră în cont</h2>
+        <form id="authForm" class="space-y-4">
+            <input type="email" id="email" placeholder="Adresa de email" required class="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 focus:border-indigo-500 outline-none">
+            <input type="password" id="password" placeholder="Parola" required class="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 focus:border-indigo-500 outline-none">
+            
+            <p id="error" class="text-red-400 text-sm hidden text-center"></p>
+            
+            <button type="submit" id="submitBtn" class="w-full bg-indigo-500 py-3 rounded-xl font-bold hover:bg-indigo-400 transition">Logare</button>
+        </form>
+        
+        <p class="text-center text-sm text-gray-400 mt-6">
+            <span id="switchText">Nu ai cont?</span> 
+            <button id="switchBtn" class="text-indigo-400 font-bold hover:underline">Creează unul</button>
+        </p>
+    </div>
+
+    <script>
+        let isLogin = true;
+        const form = document.getElementById('authForm');
+        const title = document.getElementById('title');
+        const submitBtn = document.getElementById('submitBtn');
+        const switchText = document.getElementById('switchText');
+        const switchBtn = document.getElementById('switchBtn');
+        const errorP = document.getElementById('error');
+
+        switchBtn.onclick = () => {
+            isLogin = !isLogin;
+            title.innerText = isLogin ? 'Intră în cont' : 'Creează cont';
+            submitBtn.innerText = isLogin ? 'Logare' : 'Înregistrare';
+            switchText.innerText = isLogin ? 'Nu ai cont?' : 'Ai deja cont?';
+            switchBtn.innerText = isLogin ? 'Creează unul' : 'Loghează-te';
+            errorP.classList.add('hidden');
+        };
+
+        form.onsubmit = async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const endpoint = isLogin ? '/api/login' : '/api/register';
+
+            try {
+                const res = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                const data = await res.json();
+
+                if (!res.ok) throw new Error(data.error);
+
+                if (!isLogin) {
+                    alert('Cont creat! Te rugam sa te loghezi.');
+                    switchBtn.click();
+                } else {
+                    localStorage.setItem('viralio_token', data.token);
+                    window.location.href = '/'; // Redirectionare spre Dashboard!
+                }
+            } catch (err) {
+                errorP.innerText = err.message;
+                errorP.classList.remove('hidden');
+            }
+        };
+    </script>
+</body>
+</html>
