@@ -29,7 +29,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // ==========================================
 // BAZA DE DATE (MONGODB) & SCHEMA USER
 // ==========================================
-mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+mongoose.connect(process.env.MONGO_URI)
     .then(() => console.log('✅ Conectat la MongoDB!'))
     .catch(err => console.error('❌ Eroare MongoDB:', err));
 
