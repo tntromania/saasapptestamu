@@ -10,9 +10,11 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// SETARI EXACTE PENTRU VPS LINUX vs WINDOWS
 const isWindows = process.platform === 'win32';
-const YTDLP_PATH = isWindows ? path.join(__dirname, 'yt-dlp.exe') : 'yt-dlp';
-const FFMPEG_PATH = isWindows ? path.join(__dirname, 'ffmpeg.exe') : 'ffmpeg';
+const YTDLP_PATH = isWindows ? path.join(__dirname, 'yt-dlp.exe') : '/usr/local/bin/yt-dlp';
+const FFMPEG_PATH = isWindows ? path.join(__dirname, 'ffmpeg.exe') : '/usr/bin/ffmpeg';
 const DOWNLOAD_DIR = path.join(__dirname, 'downloads');
 
 if (!fs.existsSync(DOWNLOAD_DIR)) fs.mkdirSync(DOWNLOAD_DIR);
@@ -22,24 +24,25 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public'))); 
 
 // ==========================================
-// PROXY (LASA-L GOL PE WINDOWS!)
+// BYPASS YOUTUBE: COOKIES SAU PROXY
 // ==========================================
-// Când îl pui pe Coolify, pui un proxy aici doar dacă dă eroare.
-// Local pe PC-ul tău, IP-ul tău e cel mai bun!
 const PROXY_URL = ""; 
 const proxyArg = PROXY_URL ? `--proxy "${PROXY_URL}"` : "";
+
+// Daca pui un fisier cookies.txt in folder, il va folosi automat ca sa treaca de restrictii!
+const cookiesPath = path.join(__dirname, 'cookies.txt');
+const cookiesArg = fs.existsSync(cookiesPath) ? `--cookies "${cookiesPath}"` : "";
 
 // --- LOGICA PENTRU TRANSCRIPT ---
 const getTranscriptAndSummary = async (url) => {
     return new Promise((resolve) => {
-        // TRUC: Am pus clientul de ANDROID. Trece de filtrele anti-bot de la YouTube!
-        const command = `"${YTDLP_PATH}" ${proxyArg} --write-auto-sub --skip-download --sub-lang en,ro --convert-subs vtt --extractor-args "youtube:player_client=android" --output "${path.join(DOWNLOAD_DIR, 'temp_%(id)s')}" "${url}"`;
+        const command = `"${YTDLP_PATH}" ${proxyArg} ${cookiesArg} --write-auto-sub --skip-download --sub-lang en,ro --convert-subs vtt --extractor-args "youtube:player_client=android,web" --output "${path.join(DOWNLOAD_DIR, 'temp_%(id)s')}" "${url}"`;
         
         exec(command, async (error, stdout, stderr) => {
             const files = fs.readdirSync(DOWNLOAD_DIR).filter(f => f.startsWith('temp_') && f.endsWith('.vtt'));
             
             if (files.length === 0) {
-                const descCommand = `"${YTDLP_PATH}" ${proxyArg} --dump-json "${url}"`;
+                const descCommand = `"${YTDLP_PATH}" ${proxyArg} ${cookiesArg} --dump-json "${url}"`;
                 exec(descCommand, (err, descOut) => {
                     try {
                         const info = JSON.parse(descOut);
@@ -61,7 +64,7 @@ const getTranscriptAndSummary = async (url) => {
                 const completion = await openai.chat.completions.create({
                     messages: [
                         { role: "system", content: "Ești un asistent util." },
-                        { role: "user", content: `Tradu și rezumă textul acesta în română, max 3 paragrafe:\n\n${cleanText.substring(0, 5000)}` }
+                        { role: "user", content: `Tradu și rezumă textul acesta în română:\n\n${cleanText.substring(0, 5000)}` }
                     ],
                     model: "gpt-4o-mini",
                 });
@@ -93,20 +96,19 @@ app.post('/api/process-yt', async (req, res) => {
     let { url } = req.body;
     if (!url) return res.status(400).json({ error: 'URL lipsă' });
 
-    // Curatare link Shorts in link normal
     if (url.includes('/shorts/')) {
         url = url.replace('/shorts/', '/watch?v=').split('&')[0].split('?feature')[0];
     }
     
-    console.log(`[START] Procesare: ${url}`);
+    console.log(`[START] Procesare VPS: ${url}`);
     const videoId = Date.now();
     const outputPath = path.join(DOWNLOAD_DIR, `${videoId}.mp4`);
 
     try {
         const ffmpegArg = isWindows ? `--ffmpeg-location "${FFMPEG_PATH}"` : "";
         
-        // TRUC: Si aici am pus clientul de ANDROID!
-        const command = `"${YTDLP_PATH}" ${proxyArg} ${ffmpegArg} -f "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" -o "${outputPath}" --extractor-args "youtube:player_client=android" --no-check-certificates --no-playlist "${url}"`;
+        // Comanda finala de download cu Cookies incluse automat daca exista!
+        const command = `"${YTDLP_PATH}" ${proxyArg} ${ffmpegArg} ${cookiesArg} -f "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" -o "${outputPath}" --extractor-args "youtube:player_client=android,web" --no-check-certificates --no-playlist "${url}"`;
         
         const aiData = await getTranscriptAndSummary(url);
         
@@ -118,8 +120,9 @@ app.post('/api/process-yt', async (req, res) => {
 
         exec(command, (error, stdout, stderr) => {
             if (error) {
-                console.error("Eroare descarcare:", stderr);
-                return res.status(500).json({ error: "Eroare YT: YouTube a blocat cererea. (Posibil limitare de IP)" });
+                console.error("Eroare descarcare VPS:", stderr);
+                // Returnam eroarea EXACTA catre ecran ca sa o citesti!
+                return res.status(500).json({ error: `Eroare VPS: ${stderr.split('\n')[0]}` });
             }
             
             res.json({
