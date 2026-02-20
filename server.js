@@ -52,7 +52,7 @@ const getTranscriptAndTranslation = async (url) => {
             try {
                 const completion = await openai.chat.completions.create({
                     messages: [
-                        { role: "system", content: "Ești un traducător profesionist. Tradu textul pe care îl primești în limba română, păstrând pe cât posibil formatul și sensul. Nu oferi explicații, returnează doar traducerea textului." },
+                        { role: "system", content: "Ești un traducător profesionist. Tradu textul pe care îl primești în limba română, păstrând pe cât posibil formatul și sensul. Nu oferi explicații, returnează doar traducerea textului si tot odata cand apare music, scoate-l și lasă-mi, te rog, doar textul în sine, fără: Tip: subtitrări Limba: en aliniere: început poziție: 0%" },
                         { role: "user", content: textToTranslate }
                     ],
                     model: "gpt-4o-mini", 
