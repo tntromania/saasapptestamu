@@ -12,6 +12,11 @@
     <style>
         body { background-color: #030712; color: white; }
         .glass { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.05); }
+        /* Scrollbar customizat pentru panourile de text */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #0f1423; border-radius: 8px; }
+        ::-webkit-scrollbar-thumb { background: #374151; border-radius: 8px; }
+        ::-webkit-scrollbar-thumb:hover { background: #4B5563; }
     </style>
 </head>
 <body class="p-6 md:p-12 relative overflow-hidden min-h-screen">
@@ -22,16 +27,16 @@
         <i class="fas fa-arrow-left"></i> Înapoi la Dashboard
     </a>
     
-    <div class="max-w-4xl mx-auto glass rounded-[2rem] p-8 md:p-12 shadow-2xl relative z-10">
+    <div class="max-w-6xl mx-auto glass rounded-[2rem] p-8 md:p-12 shadow-2xl relative z-10">
         <div class="text-center mb-10">
             <div class="w-16 h-16 rounded-2xl bg-red-500/20 text-red-500 flex items-center justify-center text-3xl mx-auto mb-6">
                 <i class="fab fa-youtube"></i>
             </div>
-            <h1 class="text-4xl font-extrabold mb-3">YT Auto Downloader & AI</h1>
-            <p class="text-gray-400 text-lg">Introdu link-ul de YouTube pentru a extrage 1080p și textul.</p>
+            <h1 class="text-4xl font-extrabold mb-3">YT Downloader & Translator</h1>
+            <p class="text-gray-400 text-lg">Introdu link-ul de YouTube pentru Video MP4 și Traducere.</p>
         </div>
 
-        <div class="relative mb-6 group">
+        <div class="relative mb-6 group max-w-4xl mx-auto">
             <div class="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none text-gray-500">
                 <i class="fas fa-link"></i>
             </div>
@@ -45,34 +50,42 @@
             <div class="relative w-20 h-20 mx-auto mb-6">
                 <div class="absolute inset-0 rounded-full border-t-2 border-primary animate-spin"></div>
                 <div class="absolute inset-2 rounded-full border-r-2 border-pink-500 animate-spin" style="animation-direction: reverse; animation-duration: 1.5s;"></div>
-                <i class="fas fa-brain absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-gray-400"></i>
+                <i class="fas fa-language absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-gray-400 text-xl"></i>
             </div>
-            <h3 class="text-xl font-bold text-white mb-2">Procesăm Magia AI...</h3>
-            <p class="text-gray-500">Video și Subtitrări în curs de generare.</p>
+            <h3 class="text-xl font-bold text-white mb-2">Se descarcă și se traduce...</h3>
+            <p class="text-gray-500">Folosim IP Rezidențial, poate dura câteva secunde.</p>
         </div>
 
         <div id="result" class="hidden mt-10 space-y-6">
-            <div class="bg-green-500/10 border border-green-500/30 text-green-400 p-5 rounded-2xl flex items-center gap-4">
-                <i class="fas fa-check-circle text-3xl"></i>
-                <div>
-                    <h3 class="font-bold text-white text-lg">Gata!</h3>
-                    <p class="text-sm">Fișierele tale au fost generate cu succes.</p>
-                </div>
-            </div>
-
-            <div class="grid grid-cols-1 gap-4">
-                <a id="dl-video" href="#" download class="flex items-center justify-center gap-3 bg-[#0f1423] hover:bg-white/5 border border-gray-800 hover:border-gray-600 p-5 rounded-2xl font-bold transition group">
-                    <i class="fas fa-video text-blue-400 text-xl group-hover:scale-110 transition"></i> MP4 1080p
+            
+            <div class="flex justify-center mb-8">
+                <a id="dl-video" href="#" download class="flex items-center justify-center gap-3 bg-green-500 hover:bg-green-600 text-white px-10 py-5 rounded-2xl font-black text-xl transition-all hover:scale-105 shadow-[0_0_30px_rgba(34,197,94,0.4)]">
+                    <i class="fas fa-download"></i> DESCARCĂ VIDEO MP4
                 </a>
             </div>
 
-            <div class="bg-[#0f1423] rounded-2xl p-6 border border-gray-800">
-                <div class="flex items-center gap-3 mb-4 border-b border-gray-800 pb-4">
-                    <div class="p-2 bg-primary/20 rounded-lg text-primary"><i class="fas fa-align-left"></i></div>
-                    <h4 class="font-bold text-gray-200">Text Tradus / Rezumat</h4>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="bg-[#0f1423] rounded-2xl border border-gray-800 h-[500px] flex flex-col overflow-hidden relative">
+                    <div class="flex items-center gap-3 p-5 border-b border-gray-800 bg-[#151b2b]">
+                        <div class="p-2 bg-blue-500/20 rounded-lg text-blue-400"><i class="fas fa-closed-captioning"></i></div>
+                        <h4 class="font-bold text-gray-200">Subtitrare Originală</h4>
+                    </div>
+                    <div class="p-6 overflow-y-auto flex-1">
+                        <p id="original-text" class="text-sm text-gray-400 leading-relaxed font-medium whitespace-pre-wrap"></p>
+                    </div>
                 </div>
-                <p id="ai-text" class="text-sm text-gray-400 leading-relaxed font-medium whitespace-pre-wrap"></p>
+
+                <div class="bg-[#0f1423] rounded-2xl border border-gray-800 h-[500px] flex flex-col overflow-hidden relative">
+                    <div class="flex items-center gap-3 p-5 border-b border-gray-800 bg-[#151b2b]">
+                        <div class="p-2 bg-pink-500/20 rounded-lg text-pink-400"><i class="fas fa-language"></i></div>
+                        <h4 class="font-bold text-gray-200">Traducere (RO)</h4>
+                    </div>
+                    <div class="p-6 overflow-y-auto flex-1">
+                        <p id="translated-text" class="text-sm text-gray-300 leading-relaxed font-medium whitespace-pre-wrap"></p>
+                    </div>
+                </div>
             </div>
+
         </div>
 
         <p id="error-msg" class="hidden mt-6 bg-red-500/10 border border-red-500/30 text-red-400 p-4 rounded-xl text-center font-bold"></p>
@@ -97,8 +110,6 @@
             errorMsg.classList.add('hidden');
 
             try {
-                // Am setat linkul curat catre propriul domeniu. 
-                // Nu mai exista erori de SSL sau CORS asa!
                 const backendUrl = '/api/process-yt';
                 
                 const res = await fetch(backendUrl, {
@@ -112,13 +123,15 @@
                 try {
                     data = JSON.parse(responseText);
                 } catch (e) {
-                    throw new Error("Timpul de așteptare a expirat. Proxy-ul s-a mișcat prea greu.");
+                    throw new Error("Eroare de la server (Posibil Timeout/Proxy Error).");
                 }
 
-                if (!res.ok) throw new Error(data.error || "Eroare necunoscută la server.");
+                if (!res.ok) throw new Error(data.error || "Eroare necunoscută.");
 
+                // Actualizam UI-ul cu noile date primite de la backend
                 document.getElementById('dl-video').href = data.downloadUrl;
-                document.getElementById('ai-text').innerText = data.aiSummary;
+                document.getElementById('original-text').innerText = data.originalText;
+                document.getElementById('translated-text').innerText = data.translatedText;
                 
                 result.classList.remove('hidden');
             } catch (err) {

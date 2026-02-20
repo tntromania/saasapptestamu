@@ -21,39 +21,52 @@ app.use(cors({ origin: '*' }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public'))); 
 
-// DATELE TALE EXACTE PENTRU EVOMI:
+// DATELE TALE EXACTE PENTRU EVOMI (PROXY REZIDENTIAL):
 const PROXY_URL = `http://banicualex6:MGqdTRZRtftV80I9MhSD@core-residential.evomi.com:1000`;
 const proxyArg = `--proxy "${PROXY_URL}"`;
 const bypassArgs = `--force-ipv4 --extractor-args "youtube:player_client=android" --no-warnings`;
 
-// --- LOGICA PENTRU TRANSCRIPT ---
-const getTranscriptAndSummary = async (url) => {
+// --- LOGICA PENTRU TRANSCRIPT SI TRADUCERE ---
+const getTranscriptAndTranslation = async (url) => {
     return new Promise((resolve) => {
         const command = `"${YTDLP_PATH}" ${proxyArg} ${bypassArgs} --write-auto-sub --skip-download --sub-lang en,ro --convert-subs vtt --output "${path.join(DOWNLOAD_DIR, 'temp_%(id)s')}" "${url}"`;
         
         exec(command, { maxBuffer: 1024 * 1024 * 10, timeout: 60000 }, async (error, stdout, stderr) => {
             const files = fs.readdirSync(DOWNLOAD_DIR).filter(f => f.startsWith('temp_') && f.endsWith('.vtt'));
-            let cleanText = "";
+            let originalText = "";
             
             if (files.length === 0) {
-                resolve({ text: "Nu s-a găsit subtitrare." });
+                resolve({ original: "Nu s-a găsit subtitrare.", translated: "Nu există text de tradus." });
                 return;
             } else {
                 const vttPath = path.join(DOWNLOAD_DIR, files[0]);
                 let content = fs.readFileSync(vttPath, 'utf8');
                 content = content.replace(/WEBVTT/g, '').replace(/(\d{2}:\d{2}:\d{2}\.\d{3} --> \d{2}:\d{2}:\d{2}\.\d{3})/g, '').replace(/<[^>]*>/g, '');
-                cleanText = [...new Set(content.split('\n').map(l => l.trim()).filter(l => l.length > 2))].join(' ');
+                originalText = [...new Set(content.split('\n').map(l => l.trim()).filter(l => l.length > 2))].join(' ');
                 fs.unlinkSync(vttPath);
             }
 
+            // Limităm la ~10000 caractere (cam 15 minute de video) să nu crape API-ul
+            let textToTranslate = originalText.substring(0, 10000);
+
             try {
                 const completion = await openai.chat.completions.create({
-                    messages: [{ role: "system", content: "Ești un asistent util." }, { role: "user", content: `Rezumă acest text, extrăgând 3 idei principale (fii scurt):\n\n${cleanText.substring(0, 4000)}` }],
+                    messages: [
+                        { role: "system", content: "Ești un traducător profesionist. Tradu textul pe care îl primești în limba română, păstrând pe cât posibil formatul și sensul. Nu oferi explicații, returnează doar traducerea textului." },
+                        { role: "user", content: textToTranslate }
+                    ],
                     model: "gpt-4o-mini", 
                 });
-                resolve({ text: completion.choices[0].message.content });
+                
+                resolve({ 
+                    original: originalText, 
+                    translated: completion.choices[0].message.content 
+                });
             } catch (e) {
-                resolve({ text: "Eroare AI la rezumat." });
+                resolve({ 
+                    original: originalText, 
+                    translated: "Eroare AI la traducere: " + e.message 
+                });
             }
         });
     });
@@ -77,21 +90,23 @@ app.post('/api/process-yt', async (req, res) => {
         const ffmpegArg = isWindows ? `--ffmpeg-location "${FFMPEG_PATH}"` : "";
         const command = `"${YTDLP_PATH}" ${proxyArg} ${ffmpegArg} ${bypassArgs} -f "b[ext=mp4]/best" -o "${outputPath}" --no-check-certificates --no-playlist "${url}"`;
         
-        const aiData = await getTranscriptAndSummary(url);
+        // Preluam originalul si tradusul simultan
+        const aiData = await getTranscriptAndTranslation(url);
 
         console.log(`[INFO] Se descarcă MP4 cu IP rezidențial Evomi...`);
         
         exec(command, { maxBuffer: 1024 * 1024 * 10, timeout: 180000 }, async (error, stdout, stderr) => {
             if (error) {
                 console.error(`[EROARE] Detalii eroare:`, stderr);
-                return res.status(500).json({ error: "Eroare la descărcare. Serverul YouTube a refuzat conexiunea." });
+                return res.status(500).json({ error: "Eroare la descărcare. Serverul YouTube a refuzat conexiunea (posibil din cauza proxy-ului)." });
             }
             
             console.log(`[SUCCES] Video descărcat perfect!`);
             res.json({
                 status: 'ok',
                 downloadUrl: `/download/${videoId}.mp4`,
-                aiSummary: aiData.text
+                originalText: aiData.original,
+                translatedText: aiData.translated
             });
         });
 
@@ -110,5 +125,5 @@ app.get('/download/:filename', (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 VIRALIO rulează cu Evomi Proxy (Raw).`);
+    console.log(`🚀 VIRALIO rulează cu Evomi Proxy & Traducător.`);
 });
