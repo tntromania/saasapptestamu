@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 3000;
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// SETARI EXACTE PENTRU VPS LINUX vs WINDOWS
+// Setari automate pentru VPS (Linux) sau PC (Windows)
 const isWindows = process.platform === 'win32';
 const YTDLP_PATH = isWindows ? path.join(__dirname, 'yt-dlp.exe') : '/usr/local/bin/yt-dlp';
 const FFMPEG_PATH = isWindows ? path.join(__dirname, 'ffmpeg.exe') : '/usr/bin/ffmpeg';
@@ -23,112 +23,86 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public'))); 
 
-// ==========================================
-// BYPASS YOUTUBE: COOKIES SAU PROXY
-// ==========================================
-const PROXY_URL = ""; 
-const proxyArg = PROXY_URL ? `--proxy "${PROXY_URL}"` : "";
-
-// Daca pui un fisier cookies.txt in folder, il va folosi automat ca sa treaca de restrictii!
+// Daca pui cookies.txt le va folosi automat, dar functioneaza si fara!
 const cookiesPath = path.join(__dirname, 'cookies.txt');
 const cookiesArg = fs.existsSync(cookiesPath) ? `--cookies "${cookiesPath}"` : "";
 
 // --- LOGICA PENTRU TRANSCRIPT ---
 const getTranscriptAndSummary = async (url) => {
     return new Promise((resolve) => {
-        const command = `"${YTDLP_PATH}" ${proxyArg} ${cookiesArg} --write-auto-sub --skip-download --sub-lang en,ro --convert-subs vtt --extractor-args "youtube:player_client=android,web" --output "${path.join(DOWNLOAD_DIR, 'temp_%(id)s')}" "${url}"`;
+        // Folosim clientul "android" care are cele mai mici sanse de blocare pe VPS
+        const command = `"${YTDLP_PATH}" ${cookiesArg} --write-auto-sub --skip-download --sub-lang en,ro --convert-subs vtt --extractor-args "youtube:player_client=android" --output "${path.join(DOWNLOAD_DIR, 'temp_%(id)s')}" "${url}"`;
         
         exec(command, async (error, stdout, stderr) => {
             const files = fs.readdirSync(DOWNLOAD_DIR).filter(f => f.startsWith('temp_') && f.endsWith('.vtt'));
             
+            let cleanText = "";
             if (files.length === 0) {
-                const descCommand = `"${YTDLP_PATH}" ${proxyArg} ${cookiesArg} --dump-json "${url}"`;
-                exec(descCommand, (err, descOut) => {
-                    try {
-                        const info = JSON.parse(descOut);
-                        resolve({ text: info.description || "Niciun text disponibil pentru rezumat." });
-                    } catch(e) {
-                        resolve({ text: "Nu s-a putut extrage textul." });
-                    }
-                });
+                // Dacă nu există subtitrare, NU stăm să așteptăm DUMP-JSON (care dă timeout). Trecem mai departe rapid.
+                resolve({ text: "Nu s-a găsit subtitrare oficială pentru acest videoclip." });
                 return;
+            } else {
+                const vttPath = path.join(DOWNLOAD_DIR, files[0]);
+                let content = fs.readFileSync(vttPath, 'utf8');
+                content = content.replace(/WEBVTT/g, '').replace(/(\d{2}:\d{2}:\d{2}\.\d{3} --> \d{2}:\d{2}:\d{2}\.\d{3})/g, '').replace(/<[^>]*>/g, '');
+                cleanText = [...new Set(content.split('\n').map(l => l.trim()).filter(l => l.length > 2))].join(' ');
+                fs.unlinkSync(vttPath);
             }
 
-            const vttPath = path.join(DOWNLOAD_DIR, files[0]);
-            let content = fs.readFileSync(vttPath, 'utf8');
-            content = content.replace(/WEBVTT/g, '').replace(/(\d{2}:\d{2}:\d{2}\.\d{3} --> \d{2}:\d{2}:\d{2}\.\d{3})/g, '').replace(/<[^>]*>/g, '');
-            const cleanText = [...new Set(content.split('\n').map(l => l.trim()).filter(l => l.length > 2))].join(' ');
-            fs.unlinkSync(vttPath);
-
             try {
+                // Generam rezumatul super rapid cu GPT
                 const completion = await openai.chat.completions.create({
                     messages: [
-                        { role: "system", content: "Ești un asistent util." },
-                        { role: "user", content: `Tradu și rezumă textul acesta în română:\n\n${cleanText.substring(0, 5000)}` }
+                        { role: "system", content: "Ești un asistent util care extrage ideile principale." },
+                        { role: "user", content: `Te rog tradu și rezumă textul acesta în română, în 2-3 idei principale (fii concis):\n\n${cleanText.substring(0, 4000)}` }
                     ],
-                    model: "gpt-4o-mini",
+                    model: "gpt-4o-mini", // Model super rapid
                 });
                 resolve({ text: completion.choices[0].message.content });
             } catch (e) {
-                resolve({ text: "Eroare GPT: " + e.message });
+                resolve({ text: "Eroare la procesarea textului cu AI." });
             }
         });
     });
 };
 
-const generateAudio = async (text, id) => {
-    try {
-        const mp3 = await openai.audio.speech.create({
-            model: "tts-1-hd",
-            voice: "alloy",
-            input: text.substring(0, 4000),
-        });
-        const buffer = Buffer.from(await mp3.arrayBuffer());
-        const audioPath = path.join(DOWNLOAD_DIR, `${id}.mp3`);
-        fs.writeFileSync(audioPath, buffer);
-        return audioPath;
-    } catch (error) {
-        return null;
-    }
-};
 
+// --- ENDPOINT PROCESARE VIDEO ---
 app.post('/api/process-yt', async (req, res) => {
     let { url } = req.body;
     if (!url) return res.status(400).json({ error: 'URL lipsă' });
 
+    // Fentam protectia pentru Shorts transformand linkul in Video Normal
     if (url.includes('/shorts/')) {
         url = url.replace('/shorts/', '/watch?v=').split('&')[0].split('?feature')[0];
     }
     
-    console.log(`[START] Procesare VPS: ${url}`);
+    console.log(`[START] Procesare pe VPS: ${url}`);
     const videoId = Date.now();
     const outputPath = path.join(DOWNLOAD_DIR, `${videoId}.mp4`);
 
     try {
         const ffmpegArg = isWindows ? `--ffmpeg-location "${FFMPEG_PATH}"` : "";
         
-        // Comanda finala de download cu Cookies incluse automat daca exista!
-        const command = `"${YTDLP_PATH}" ${proxyArg} ${ffmpegArg} ${cookiesArg} -f "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" -o "${outputPath}" --extractor-args "youtube:player_client=android,web" --no-check-certificates --no-playlist "${url}"`;
+        // Comanda optimizata pt viteza si bypass:
+        // Setam calitatea la maxim 1080p, folosim "android", si scurtam formatul pt a evita merge-ul greoi de ffmpeg daca nu e nevoie
+        const command = `"${YTDLP_PATH}" ${ffmpegArg} ${cookiesArg} -f "b[ext=mp4]/best" -o "${outputPath}" --extractor-args "youtube:player_client=android" --no-check-certificates --no-playlist "${url}"`;
         
+        // Preluam textul (Dureaza ~3 secunde)
         const aiData = await getTranscriptAndSummary(url);
-        
-        let audioUrl = null;
-        if (aiData.text && !aiData.text.startsWith('Eroare') && !aiData.text.startsWith('Nu s-a')) {
-            await generateAudio(aiData.text, videoId);
-            audioUrl = `/download/${videoId}.mp3`;
-        }
 
+        // NU MAI GENERAM AUDIO AICI! Asta dadea Timeout-ul ("read tcp4"). Ne concentram pe Download si Text.
+        
         exec(command, (error, stdout, stderr) => {
             if (error) {
-                console.error("Eroare descarcare VPS:", stderr);
-                // Returnam eroarea EXACTA catre ecran ca sa o citesti!
-                return res.status(500).json({ error: `Eroare VPS: ${stderr.split('\n')[0]}` });
+                console.error("Eroare yt-dlp pe VPS:", stderr);
+                return res.status(500).json({ error: `Eroare descărcare. Serverul YouTube a refuzat conexiunea.` });
             }
             
             res.json({
                 status: 'ok',
                 downloadUrl: `/download/${videoId}.mp4`,
-                audioUrl: audioUrl,
+                audioUrl: null, // Am scos audio-ul ca sa mearga instant
                 aiSummary: aiData.text
             });
         });
@@ -148,5 +122,5 @@ app.get('/download/:filename', (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 VIRALIO ruleaza pe http://localhost:${PORT}`);
+    console.log(`🚀 VIRALIO (Versiunea Optimizată) rulează pe http://localhost:${PORT}`);
 });

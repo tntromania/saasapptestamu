@@ -112,7 +112,12 @@
                 if (!res.ok) throw new Error(data.error);
 
                 document.getElementById('dl-video').href = data.downloadUrl;
-                document.getElementById('dl-audio').href = data.audioUrl;
+                if(data.audioUrl) {
+    document.getElementById('dl-audio').href = data.audioUrl;
+    document.getElementById('dl-audio').style.display = 'flex';
+} else {
+    document.getElementById('dl-audio').style.display = 'none';
+}
                 document.getElementById('ai-text').innerText = data.aiSummary;
                 
                 result.classList.remove('hidden');
