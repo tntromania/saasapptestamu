@@ -25,7 +25,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // --- LOGICA PENTRU TRANSCRIPT ---
 const getTranscriptAndSummary = async (url) => {
     return new Promise((resolve) => {
-        const command = `"${YTDLP_PATH}" --write-auto-sub --skip-download --sub-lang en,ro --convert-subs vtt --output "${path.join(DOWNLOAD_DIR, 'temp_%(id)s')}" "${url}"`;
+        const command = `yt-dlp --write-auto-sub --skip-download --sub-lang en,ro --convert-subs vtt --extractor-args "youtube:player_client=ios,tv_downgraded,default" --output "${path.join(DOWNLOAD_DIR, 'temp_%(id)s')}" "${url}"`;
         
         exec(command, async (error, stdout) => {
             const files = fs.readdirSync(DOWNLOAD_DIR).filter(f => f.startsWith('temp_') && f.endsWith('.vtt'));
@@ -86,7 +86,7 @@ app.post('/api/process-yt', async (req, res) => {
     const outputPath = path.join(DOWNLOAD_DIR, `${videoId}.mp4`);
 
     try {
-        const command = `"${YTDLP_PATH}" --ffmpeg-location "${FFMPEG_PATH}" -f "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" -o "${outputPath}" --no-check-certificates --no-playlist "${url}"`;
+        const command = `yt-dlp -f "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" -o "${outputPath}" --extractor-args "youtube:player_client=ios,tv_downgraded,default" --no-check-certificates --no-playlist "${url}"`;
         
         const aiData = await getTranscriptAndSummary(url);
         
