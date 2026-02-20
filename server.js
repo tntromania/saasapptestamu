@@ -17,14 +17,17 @@ const DOWNLOAD_DIR = path.join(__dirname, 'downloads');
 
 if (!fs.existsSync(DOWNLOAD_DIR)) fs.mkdirSync(DOWNLOAD_DIR);
 
-app.use(cors());
+app.use(cors({ origin: '*' }));
 app.use(express.json());
-// Serveste tot ce este in folderul public pe noul tau domeniu
 app.use(express.static(path.join(__dirname, 'public'))); 
 
-// Proxy-ul WebShare
-const PROXY_URL = "http://jidqrlsg:8acghm3viqfp@64.137.96.74:6641/"; 
-const proxyArg = `--proxy "${PROXY_URL}"`;
+// =======================================================
+// AICI PUI NOUL PROXY REZIDENTIAL (IPRoyal, Smartproxy)
+// =======================================================
+const PROXY_URL = "http://core-residential.evomi.com:1000:banicualex6:MGqdTRZRtftV80I9MhSD_country-RO"; // EX: "http://user:parola@geo.iproyal.com:12345"
+const proxyArg = PROXY_URL ? `--proxy "${PROXY_URL}"` : "";
+
+// Folosim clientul "android" care fenteaza cel mai bine sistemul
 const bypassArgs = `--force-ipv4 --extractor-args "youtube:player_client=android" --no-warnings`;
 
 // --- LOGICA PENTRU TRANSCRIPT ---
@@ -35,8 +38,9 @@ const getTranscriptAndSummary = async (url) => {
         exec(command, { maxBuffer: 1024 * 1024 * 10, timeout: 60000 }, async (error, stdout, stderr) => {
             const files = fs.readdirSync(DOWNLOAD_DIR).filter(f => f.startsWith('temp_') && f.endsWith('.vtt'));
             let cleanText = "";
+            
             if (files.length === 0) {
-                resolve({ text: "Nu s-a găsit subtitrare. Probabil YouTube a restricționat proxy-ul." });
+                resolve({ text: "Nu s-a găsit subtitrare." });
                 return;
             } else {
                 const vttPath = path.join(DOWNLOAD_DIR, files[0]);
@@ -48,51 +52,15 @@ const getTranscriptAndSummary = async (url) => {
 
             try {
                 const completion = await openai.chat.completions.create({
-                    messages: [{ role: "system", content: "Ești un asistent util." }, { role: "user", content: `Rezumă textul acesta în română, scurt:\n\n${cleanText.substring(0, 4000)}` }],
+                    messages: [{ role: "system", content: "Ești un asistent util." }, { role: "user", content: `Rezumă acest text, extrăgând 3 idei principale (fii scurt):\n\n${cleanText.substring(0, 4000)}` }],
                     model: "gpt-4o-mini", 
                 });
                 resolve({ text: completion.choices[0].message.content });
             } catch (e) {
-                resolve({ text: "Eroare AI la generarea rezumatului." });
+                resolve({ text: "Eroare AI la rezumat." });
             }
         });
     });
-};
-
-// =================================================================
-// 🚨 SCHEMA SUPREMA: DACA PICA YT-DLP, FOLOSIM API PUBLIC (Cobalt)
-// =================================================================
-const downloadViaBypassAPI = async (videoUrl, outputPath) => {
-    console.log(`[SCHEMA] Proxy-ul a fost blocat. Inițiere Bypass API de rezervă...`);
-    try {
-        const res = await fetch("https://api.cobalt.tools/api/json", {
-            method: "POST",
-            headers: {
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-                "Origin": "https://cobalt.tools",
-                "Referer": "https://cobalt.tools/",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            },
-            body: JSON.stringify({ url: videoUrl, vQuality: "1080", disableMetadata: true })
-        });
-        
-        const data = await res.json();
-        
-        if (data && data.url) {
-            return new Promise((resolve, reject) => {
-                const curlCmd = `curl -L -o "${outputPath}" "${data.url}"`;
-                exec(curlCmd, { timeout: 120000 }, (err) => {
-                    if (err) reject(err);
-                    else resolve(true);
-                });
-            });
-        } else {
-            throw new Error("Bypass-ul a eșuat. Serverul API nu a returnat link-ul.");
-        }
-    } catch (error) {
-        throw error;
-    }
 };
 
 // --- ENDPOINT PROCESARE VIDEO ---
@@ -100,6 +68,7 @@ app.post('/api/process-yt', async (req, res) => {
     let { url } = req.body;
     if (!url) return res.status(400).json({ error: 'URL lipsă' });
 
+    // Fentam Shorts
     if (url.includes('/shorts/')) {
         url = url.replace('/shorts/', '/watch?v=').split('&')[0].split('?feature')[0];
     }
@@ -114,32 +83,20 @@ app.post('/api/process-yt', async (req, res) => {
         
         const aiData = await getTranscriptAndSummary(url);
 
-        console.log(`[INFO] Încercare descărcare video cu yt-dlp...`);
+        console.log(`[INFO] Se descarcă cu proxy rezidențial...`);
         
-        exec(command, { maxBuffer: 1024 * 1024 * 10, timeout: 120000 }, async (error, stdout, stderr) => {
+        exec(command, { maxBuffer: 1024 * 1024 * 10, timeout: 180000 }, async (error, stdout, stderr) => {
             if (error) {
-                console.error(`[BLOCAT] yt-dlp a eșuat. YouTube a refuzat conexiunea. Activăm Bypass-ul!`);
-                try {
-                    await downloadViaBypassAPI(url, outputPath);
-                    console.log(`[SUCCES] Video a fost descărcat cu forța prin Bypass!`);
-                    
-                    return res.json({
-                        status: 'ok',
-                        downloadUrl: `/download/${videoId}.mp4`,
-                        aiSummary: aiData.text
-                    });
-                } catch (bypassErr) {
-                    console.error("Și Bypass-ul a eșuat:", bypassErr.message);
-                    return res.status(500).json({ error: "Eroare: Atât proxy-ul, cât și bypass-ul au picat. Încearcă alt proxy." });
-                }
-            } else {
-                console.log(`[SUCCES] Video descărcat normal cu yt-dlp!`);
-                res.json({
-                    status: 'ok',
-                    downloadUrl: `/download/${videoId}.mp4`,
-                    aiSummary: aiData.text
-                });
+                console.error(`[EROARE] Youtube a blocat conexiunea. Baga proxy rezidential!`);
+                return res.status(500).json({ error: "Conexiune refuzată de YouTube. Este necesar un Proxy Rezidențial valid." });
             }
+            
+            console.log(`[SUCCES] Video descărcat perfect!`);
+            res.json({
+                status: 'ok',
+                downloadUrl: `/download/${videoId}.mp4`,
+                aiSummary: aiData.text
+            });
         });
 
     } catch (e) {
@@ -157,5 +114,5 @@ app.get('/download/:filename', (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 VIRALIO rulează pe domeniu`);
+    console.log(`🚀 VIRALIO rulează oficial.`);
 });
