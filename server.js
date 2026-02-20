@@ -17,13 +17,12 @@ const DOWNLOAD_DIR = path.join(__dirname, 'downloads');
 
 if (!fs.existsSync(DOWNLOAD_DIR)) fs.mkdirSync(DOWNLOAD_DIR);
 
-app.use(cors({
-    origin: '*' 
-}));
+app.use(cors());
 app.use(express.json());
+// Serveste tot ce este in folderul public pe noul tau domeniu
 app.use(express.static(path.join(__dirname, 'public'))); 
 
-// Proxy-ul tau WebShare (Care probabil e blocat, dar il lasam)
+// Proxy-ul WebShare
 const PROXY_URL = "http://jidqrlsg:8acghm3viqfp@64.137.96.74:6641/"; 
 const proxyArg = `--proxy "${PROXY_URL}"`;
 const bypassArgs = `--force-ipv4 --extractor-args "youtube:player_client=android" --no-warnings`;
@@ -37,7 +36,7 @@ const getTranscriptAndSummary = async (url) => {
             const files = fs.readdirSync(DOWNLOAD_DIR).filter(f => f.startsWith('temp_') && f.endsWith('.vtt'));
             let cleanText = "";
             if (files.length === 0) {
-                resolve({ text: "Nu s-a găsit subtitrare. Probabil YouTube a restricționat IP-ul de proxy." });
+                resolve({ text: "Nu s-a găsit subtitrare. Probabil YouTube a restricționat proxy-ul." });
                 return;
             } else {
                 const vttPath = path.join(DOWNLOAD_DIR, files[0]);
@@ -66,7 +65,6 @@ const getTranscriptAndSummary = async (url) => {
 const downloadViaBypassAPI = async (videoUrl, outputPath) => {
     console.log(`[SCHEMA] Proxy-ul a fost blocat. Inițiere Bypass API de rezervă...`);
     try {
-        // Folosim un engine descentralizat (gen Cobalt) pt a extrage link-ul pur
         const res = await fetch("https://api.cobalt.tools/api/json", {
             method: "POST",
             headers: {
@@ -82,7 +80,6 @@ const downloadViaBypassAPI = async (videoUrl, outputPath) => {
         const data = await res.json();
         
         if (data && data.url) {
-            // Tragem fisierul pe diskul VPS-ului folosind 'curl'
             return new Promise((resolve, reject) => {
                 const curlCmd = `curl -L -o "${outputPath}" "${data.url}"`;
                 exec(curlCmd, { timeout: 120000 }, (err) => {
@@ -103,12 +100,11 @@ app.post('/api/process-yt', async (req, res) => {
     let { url } = req.body;
     if (!url) return res.status(400).json({ error: 'URL lipsă' });
 
-    // Fentam Shorts
     if (url.includes('/shorts/')) {
         url = url.replace('/shorts/', '/watch?v=').split('&')[0].split('?feature')[0];
     }
     
-    console.log(`[START] Procesare pe VPS: ${url}`);
+    console.log(`[START] Procesare pe domeniu: ${url}`);
     const videoId = Date.now();
     const outputPath = path.join(DOWNLOAD_DIR, `${videoId}.mp4`);
 
@@ -116,7 +112,6 @@ app.post('/api/process-yt', async (req, res) => {
         const ffmpegArg = isWindows ? `--ffmpeg-location "${FFMPEG_PATH}"` : "";
         const command = `"${YTDLP_PATH}" ${proxyArg} ${ffmpegArg} ${bypassArgs} -f "b[ext=mp4]/best" -o "${outputPath}" --no-check-certificates --no-playlist "${url}"`;
         
-        // Preluam Transcriptul
         const aiData = await getTranscriptAndSummary(url);
 
         console.log(`[INFO] Încercare descărcare video cu yt-dlp...`);
@@ -124,8 +119,6 @@ app.post('/api/process-yt', async (req, res) => {
         exec(command, { maxBuffer: 1024 * 1024 * 10, timeout: 120000 }, async (error, stdout, stderr) => {
             if (error) {
                 console.error(`[BLOCAT] yt-dlp a eșuat. YouTube a refuzat conexiunea. Activăm Bypass-ul!`);
-                
-                // => AICI INTRA SCHEMA IN ACTIUNE
                 try {
                     await downloadViaBypassAPI(url, outputPath);
                     console.log(`[SUCCES] Video a fost descărcat cu forța prin Bypass!`);
@@ -133,19 +126,17 @@ app.post('/api/process-yt', async (req, res) => {
                     return res.json({
                         status: 'ok',
                         downloadUrl: `/download/${videoId}.mp4`,
-                        audioUrl: null, 
                         aiSummary: aiData.text
                     });
                 } catch (bypassErr) {
                     console.error("Și Bypass-ul a eșuat:", bypassErr.message);
-                    return res.status(500).json({ error: "Eroare absolută: Atât proxy-ul, cât și bypass-ul au picat." });
+                    return res.status(500).json({ error: "Eroare: Atât proxy-ul, cât și bypass-ul au picat. Încearcă alt proxy." });
                 }
             } else {
                 console.log(`[SUCCES] Video descărcat normal cu yt-dlp!`);
                 res.json({
                     status: 'ok',
                     downloadUrl: `/download/${videoId}.mp4`,
-                    audioUrl: null, 
                     aiSummary: aiData.text
                 });
             }
@@ -166,5 +157,5 @@ app.get('/download/:filename', (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 VIRALIO (SaaS) rulează pe http://localhost:${PORT}`);
+    console.log(`🚀 VIRALIO rulează pe domeniu`);
 });
