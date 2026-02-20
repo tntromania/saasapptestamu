@@ -22,16 +22,16 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public'))); 
 
 // =======================================================
-// AICI PUI NOUL PROXY REZIDENTIAL (IPRoyal, Smartproxy)
+// CONSTRUCTIA CORECTA A PROXY-ULUI EVOMI (STICKY SESSION)
 // =======================================================
-const PROXY_URL = "http://core-residential.evomi.com:1000:banicualex6:MGqdTRZRtftV80I9MhSD_country-RO"; // EX: "http://user:parola@geo.iproyal.com:12345"
-const proxyArg = PROXY_URL ? `--proxy "${PROXY_URL}"` : "";
+// Generam o sesiune unica pt fiecare descarcare (ca IP-ul sa ramana acelasi pe durata download-ului)
+const generateSessionId = () => Math.random().toString(36).substring(2, 10);
 
-// Folosim clientul "android" care fenteaza cel mai bine sistemul
+// Setarile de bypass anti-bot
 const bypassArgs = `--force-ipv4 --extractor-args "youtube:player_client=android" --no-warnings`;
 
 // --- LOGICA PENTRU TRANSCRIPT ---
-const getTranscriptAndSummary = async (url) => {
+const getTranscriptAndSummary = async (url, proxyArg) => {
     return new Promise((resolve) => {
         const command = `"${YTDLP_PATH}" ${proxyArg} ${bypassArgs} --write-auto-sub --skip-download --sub-lang en,ro --convert-subs vtt --output "${path.join(DOWNLOAD_DIR, 'temp_%(id)s')}" "${url}"`;
         
@@ -68,12 +68,20 @@ app.post('/api/process-yt', async (req, res) => {
     let { url } = req.body;
     if (!url) return res.status(400).json({ error: 'URL lipsă' });
 
-    // Fentam Shorts
     if (url.includes('/shorts/')) {
         url = url.replace('/shorts/', '/watch?v=').split('&')[0].split('?feature')[0];
     }
     
-    console.log(`[START] Procesare pe domeniu: ${url}`);
+    // FORMATAM PROXY-UL CORECT: http://USER:PASS@HOST:PORT
+    // Adaugam _session-ID la username ca sa pastram IP-ul pe loc cat timp descarcam
+    const sessionId = generateSessionId();
+    // In caz ca parola din poza ta era mai lunga, asigura-te ca e toata aici:
+    const PROXY_URL = `http://banicualex6_session-${sessionId}:MGqdTRZRtftV80I9MhSD@core-residential.evomi.com:1000`;
+    const proxyArg = `--proxy "${PROXY_URL}"`;
+
+    console.log(`[START] Procesare domeniu: ${url}`);
+    console.log(`[INFO] Sesiune Proxy Creata: ${sessionId}`);
+    
     const videoId = Date.now();
     const outputPath = path.join(DOWNLOAD_DIR, `${videoId}.mp4`);
 
@@ -81,14 +89,14 @@ app.post('/api/process-yt', async (req, res) => {
         const ffmpegArg = isWindows ? `--ffmpeg-location "${FFMPEG_PATH}"` : "";
         const command = `"${YTDLP_PATH}" ${proxyArg} ${ffmpegArg} ${bypassArgs} -f "b[ext=mp4]/best" -o "${outputPath}" --no-check-certificates --no-playlist "${url}"`;
         
-        const aiData = await getTranscriptAndSummary(url);
+        const aiData = await getTranscriptAndSummary(url, proxyArg);
 
-        console.log(`[INFO] Se descarcă cu proxy rezidențial...`);
+        console.log(`[INFO] Se descarcă MP4 cu IP de casa...`);
         
         exec(command, { maxBuffer: 1024 * 1024 * 10, timeout: 180000 }, async (error, stdout, stderr) => {
             if (error) {
-                console.error(`[EROARE] Youtube a blocat conexiunea. Baga proxy rezidential!`);
-                return res.status(500).json({ error: "Conexiune refuzată de YouTube. Este necesar un Proxy Rezidențial valid." });
+                console.error(`[EROARE] Detalii eroare:`, stderr);
+                return res.status(500).json({ error: "Conexiune refuzată de proxy sau timeout." });
             }
             
             console.log(`[SUCCES] Video descărcat perfect!`);
@@ -114,5 +122,5 @@ app.get('/download/:filename', (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 VIRALIO rulează oficial.`);
+    console.log(`🚀 VIRALIO rulează cu Evomi Proxy.`);
 });
