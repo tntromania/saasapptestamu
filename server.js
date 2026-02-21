@@ -74,6 +74,9 @@ const authenticate = (req, res, next) => {
 app.post('/api/auth/google', async (req, res) => {
     try {
         const { credential } = req.body;
+        
+        console.log("👉 Încerc verificare token cu Client ID:", process.env.GOOGLE_CLIENT_ID);
+        
         const ticket = await googleClient.verifyIdToken({
             idToken: credential,
             audience: process.env.GOOGLE_CLIENT_ID,
@@ -83,11 +86,13 @@ app.post('/api/auth/google', async (req, res) => {
         // Cautam utilizatorul in DB, daca nu e, il cream
         let user = await User.findOne({ googleId: payload.sub });
         if (!user) {
+            console.log("Creăm utilizator nou:", payload.email);
             user = new User({
                 googleId: payload.sub,
                 email: payload.email,
                 name: payload.name,
-                picture: payload.picture
+                picture: payload.picture,
+                credits: 3 // 3 credite la înregistrare
             });
             await user.save();
         }
@@ -97,7 +102,9 @@ app.post('/api/auth/google', async (req, res) => {
         
         res.json({ token: sessionToken, user: { name: user.name, picture: user.picture, credits: user.credits } });
     } catch (error) {
-        res.status(400).json({ error: "Eroare la autentificarea Google." });
+        // AICI E MAGIA: Afișăm eroarea exactă trimisă de Google!
+        console.error("❌ EROARE CRITICĂ GOOGLE LOGIN:", error.message);
+        res.status(400).json({ error: "Eroare Google: " + error.message });
     }
 });
 
