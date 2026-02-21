@@ -3,56 +3,247 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Viralio | Dashboard</title>
+    <title>YT Processor | Viralio SaaS</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <script>
-        tailwind.config = { theme: { extend: { colors: { primary: '#6366f1', dark: '#030712' } } } }
-    </script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script>tailwind.config = { theme: { extend: { colors: { primary: '#6366f1', dark: '#030712' } } } }</script>
     <style>
         body { background-color: #030712; color: white; }
         .glass { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.05); }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #0f1423; border-radius: 8px; }
+        ::-webkit-scrollbar-thumb { background: #374151; border-radius: 8px; }
+
+        /* --- POPUP MODAL LOGIN --- */
+        #login-modal {
+            display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(10px); z-index: 9999; align-items: center; justify-content: center;
+            opacity: 0; transition: opacity 0.3s ease;
+        }
+        #login-modal.show { display: flex; opacity: 1; }
+        .modal-content {
+            background: #0f1423; border: 1px solid rgba(255,255,255,0.1); border-radius: 24px;
+            padding: 40px; text-align: center; max-width: 400px; width: 90%; position: relative;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5); transform: translateY(20px); transition: 0.3s;
+        }
+        #login-modal.show .modal-content { transform: translateY(0); }
+        .close-modal { position: absolute; top: 15px; right: 20px; background: none; border: none; color: #94a3b8; font-size: 1.5rem; cursor: pointer; transition: 0.2s; }
+        .close-modal:hover { color: #fff; transform: scale(1.1); }
     </style>
 </head>
-<body class="min-h-screen flex flex-col relative overflow-hidden">
+<body class="p-6 md:p-12 relative overflow-hidden min-h-screen">
     
-    <div class="absolute top-0 left-1/4 w-96 h-96 bg-primary/20 rounded-full blur-[120px] pointer-events-none"></div>
+    <div class="absolute top-0 right-1/4 w-96 h-96 bg-red-500/10 rounded-full blur-[120px] pointer-events-none"></div>
 
-    <nav class="border-b border-white/10 bg-dark/80 backdrop-blur-md sticky top-0 z-50">
-        <div class="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-            <div class="text-2xl font-black tracking-tight"><i class="fas fa-bolt text-primary"></i> VIRALIO</div>
-        </div>
-    </nav>
-
-    <main class="max-w-7xl mx-auto px-6 py-16 flex-1 w-full relative z-10">
-        <div class="text-center mb-16">
-            <div class="inline-block bg-primary/10 border border-primary/20 text-primary px-4 py-1 rounded-full text-sm font-bold mb-4">
-                <i class="fas fa-rocket"></i> Sistem Online
+    <div id="login-modal">
+        <div class="modal-content">
+            <button class="close-modal" onclick="closeLoginModal()"><i class="fa-solid fa-xmark"></i></button>
+            <div class="w-16 h-16 rounded-2xl bg-indigo-500/20 text-indigo-500 flex items-center justify-center text-3xl mx-auto mb-4"><i class="fas fa-user-lock"></i></div>
+            <h2 class="text-2xl font-extrabold mb-2 text-white">Intră în cont</h2>
+            <p class="text-gray-400 text-sm mb-6">Conectează-te pentru a procesa videoclipul și a folosi creditele.</p>
+            
+            <div class="flex justify-center">
+                <div id="g_id_onload"
+                     data-client_id="CLIENT_ID_UL_TAU_AICI.apps.googleusercontent.com"
+                     data-context="signin"
+                     data-ux_mode="popup"
+                     data-callback="handleCredentialResponse"
+                     data-auto_prompt="false">
+                </div>
+                <div class="g_id_signin" data-type="standard" data-shape="rectangular" data-theme="filled_black" data-text="signin_with" data-size="large"></div>
             </div>
-            <h1 class="text-5xl font-extrabold mb-4">Alege un tool AI</h1>
-            <p class="text-xl text-gray-400">Selectează aplicația pe care vrei să o folosești astăzi.</p>
         </div>
+    </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-            <a href="/youtube.html" class="glass hover:bg-white/10 p-8 rounded-3xl transition-all group block shadow-2xl hover:shadow-primary/20 hover:-translate-y-1">
-                <div class="w-14 h-14 rounded-2xl bg-red-500/20 text-red-500 flex items-center justify-center mb-6 text-2xl group-hover:scale-110 transition shadow-[0_0_15px_rgba(239,68,68,0.3)]">
+    <div class="flex justify-between items-center mb-8 max-w-6xl mx-auto relative z-10">
+        <a href="/" class="text-gray-400 hover:text-white font-medium transition flex items-center gap-2">
+            <i class="fas fa-arrow-left"></i> Dashboard
+        </a>
+        
+        <div class="flex items-center gap-4">
+            <button id="login-top-btn" onclick="openLoginModal()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-full font-bold transition-all shadow-[0_0_15px_rgba(99,102,241,0.4)]">
+                <i class="fa-brands fa-google"></i> Conectează-te
+            </button>
+
+            <div id="user-profile" class="hidden flex items-center gap-4 bg-[#0f1423] border border-gray-800 p-2 pr-4 rounded-full">
+                <img id="user-avatar" src="" alt="Avatar" class="w-10 h-10 rounded-full object-cover">
+                <div class="flex flex-col">
+                    <span id="user-name" class="font-bold text-sm"></span>
+                    <span class="text-xs text-green-400 font-bold"><i class="fas fa-coins text-yellow-500"></i> <span id="user-credits">0</span> Credite</span>
+                </div>
+                <button onclick="logout()" class="ml-2 text-red-400 hover:text-red-500 text-lg transition"><i class="fas fa-sign-out-alt"></i></button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="max-w-6xl mx-auto glass rounded-[2rem] p-8 md:p-12 shadow-2xl relative z-10">
+        
+        <div id="app-screen">
+            <div class="text-center mb-10">
+                <div class="w-16 h-16 rounded-2xl bg-red-500/20 text-red-500 flex items-center justify-center text-3xl mx-auto mb-6">
                     <i class="fab fa-youtube"></i>
                 </div>
-                <h3 class="text-2xl font-bold mb-3">YT AI Processor</h3>
-                <p class="text-gray-400 text-sm leading-relaxed">
-                    Descarcă video 1080p, extrage textul tradus în română și generează voce AI automat cu un singur link.
-                </p>
-            </a>
-
-            <div class="glass p-8 rounded-3xl opacity-40 cursor-not-allowed relative">
-                <div class="absolute top-6 right-6 bg-primary/20 text-primary text-xs px-3 py-1 rounded-full font-bold">Curând</div>
-                <div class="w-14 h-14 rounded-2xl bg-indigo-500/20 text-indigo-500 flex items-center justify-center mb-6 text-2xl">
-                    <i class="fas fa-video"></i>
-                </div>
-                <h3 class="text-2xl font-bold mb-3">Sora Video Gen</h3>
-                <p class="text-gray-400 text-sm leading-relaxed">Generează clipuri AI de la zero din text.</p>
+                <h1 class="text-4xl font-extrabold mb-3">YT Downloader & Translator</h1>
+                <p class="text-gray-400 text-lg">Introdu link-ul. Cost: <span class="text-yellow-500 font-bold">1 Credit</span> / Procesare.</p>
             </div>
+
+            <div class="relative mb-6 group max-w-4xl mx-auto">
+                <div class="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none text-gray-500">
+                    <i class="fas fa-link"></i>
+                </div>
+                <input type="text" id="yt-url" placeholder="Lipește link-ul aici..." class="w-full bg-[#0f1423] border border-gray-800 rounded-2xl py-5 pl-12 pr-40 text-lg focus:outline-none focus:border-primary text-white">
+                <button id="run-btn" class="absolute right-2 top-2 bottom-2 bg-primary hover:bg-indigo-500 text-white px-8 rounded-xl font-bold flex items-center gap-2 transition-all">
+                    START <i class="fas fa-bolt"></i>
+                </button>
+            </div>
+
+            <div id="loader" class="hidden text-center py-12">
+                <div class="relative w-20 h-20 mx-auto mb-6">
+                    <div class="absolute inset-0 rounded-full border-t-2 border-primary animate-spin"></div>
+                    <i class="fas fa-language absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-gray-400 text-xl"></i>
+                </div>
+                <h3 class="text-xl font-bold text-white mb-2">Procesăm...</h3>
+            </div>
+
+            <div id="result" class="hidden mt-10 space-y-6">
+                <div class="flex justify-center mb-8">
+                    <a id="dl-video" href="#" download class="flex items-center justify-center gap-3 bg-green-500 hover:bg-green-600 text-white px-10 py-5 rounded-2xl font-black text-xl shadow-[0_0_30px_rgba(34,197,94,0.4)] transition hover:scale-105">
+                        <i class="fas fa-download"></i> DESCARCĂ VIDEO MP4
+                    </a>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="bg-[#0f1423] rounded-2xl border border-gray-800 h-[500px] flex flex-col">
+                        <div class="flex items-center gap-3 p-5 border-b border-gray-800 bg-[#151b2b]">
+                            <h4 class="font-bold text-gray-200"><i class="fas fa-closed-captioning text-blue-400"></i> Original</h4>
+                        </div>
+                        <div class="p-6 overflow-y-auto flex-1">
+                            <p id="original-text" class="text-sm text-gray-400 whitespace-pre-wrap"></p>
+                        </div>
+                    </div>
+
+                    <div class="bg-[#0f1423] rounded-2xl border border-gray-800 h-[500px] flex flex-col">
+                        <div class="flex items-center gap-3 p-5 border-b border-gray-800 bg-[#151b2b]">
+                            <h4 class="font-bold text-gray-200"><i class="fas fa-language text-pink-400"></i> Traducere (RO)</h4>
+                        </div>
+                        <div class="p-6 overflow-y-auto flex-1">
+                            <p id="translated-text" class="text-sm text-gray-300 whitespace-pre-wrap"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <p id="error-msg" class="hidden mt-6 bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-xl text-center font-bold"></p>
         </div>
-    </main>
+    </div>
+
+    <script>
+        // === GESTIONARE MODAL LOGIN ===
+        const loginModal = document.getElementById('login-modal');
+        function openLoginModal() { loginModal.classList.add('show'); }
+        function closeLoginModal() { loginModal.classList.remove('show'); }
+
+        // === LOGICA DE LOGIN GOOGLE ===
+        async function handleCredentialResponse(response) {
+            try {
+                const res = await fetch('/api/auth/google', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ credential: response.credential })
+                });
+                
+                const data = await res.json();
+
+                if(data.token) {
+                    localStorage.setItem('viralio_token', data.token);
+                    closeLoginModal();
+                    updateUI(data.user);
+                } else {
+                    alert("Eroare de la server: " + (data.error || "Verifică Client ID-ul."));
+                }
+            } catch (e) { 
+                alert('Eroare gravă de conexiune la login!'); 
+            }
+        }
+
+        // Functia care ascunde butonul de conectare si arata profilul (Daca e logat)
+        function updateUI(user) {
+            document.getElementById('login-top-btn').classList.add('hidden');
+            document.getElementById('user-profile').classList.remove('hidden');
+            document.getElementById('user-name').innerText = user.name;
+            document.getElementById('user-avatar').src = user.picture;
+            document.getElementById('user-credits').innerText = user.credits;
+        }
+
+        function logout() {
+            localStorage.removeItem('viralio_token');
+            location.reload();
+        }
+
+        // === LA INCARCAREA PAGINII ===
+        window.onload = async () => {
+            const token = localStorage.getItem('viralio_token');
+            if(token) {
+                try {
+                    const res = await fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${token}` } });
+                    if(res.ok) {
+                        const data = await res.json();
+                        updateUI(data.user); // E logat -> Actualizam interfata
+                    } else {
+                        localStorage.removeItem('viralio_token'); // Token expirat -> Stergem din browser
+                    }
+                } catch (e) { console.error("Eroare la verificarea tokenului."); }
+            }
+        };
+
+        // === LOGICA DE DOWNLOAD YOUTUBE ===
+        document.getElementById('run-btn').addEventListener('click', async () => {
+            const url = document.getElementById('yt-url').value.trim();
+            const token = localStorage.getItem('viralio_token');
+            
+            if (!url) return alert('Introdu un link valid!');
+
+            // 🚨 SECRETUL AICI: Daca NU are token, deschidem POP-UP-ul in loc sa dam block!
+            if (!token) {
+                openLoginModal();
+                return; // Oprim procesul de download pana se logheaza
+            }
+
+            const btn = document.getElementById('run-btn');
+            const loader = document.getElementById('loader');
+            const result = document.getElementById('result');
+            const errorMsg = document.getElementById('error-msg');
+
+            btn.disabled = true; loader.classList.remove('hidden');
+            result.classList.add('hidden'); errorMsg.classList.add('hidden');
+
+            try {
+                const res = await fetch('/api/process-yt', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ url })
+                });
+                
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || "Eroare server.");
+
+                document.getElementById('dl-video').href = data.downloadUrl;
+                document.getElementById('original-text').innerText = data.originalText;
+                document.getElementById('translated-text').innerText = data.translatedText;
+                document.getElementById('user-credits').innerText = data.creditsLeft; // Scadem live creditele in UI
+                
+                result.classList.remove('hidden');
+            } catch (err) {
+                errorMsg.innerText = "Eroare: " + err.message;
+                errorMsg.classList.remove('hidden');
+            } finally {
+                btn.disabled = false; loader.classList.add('hidden');
+            }
+        });
+    </script>
 </body>
 </html>
