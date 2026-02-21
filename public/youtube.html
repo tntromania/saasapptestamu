@@ -111,20 +111,30 @@
     </div>
 
     <script>
-        // === LOGICA DE LOGIN GOOGLE ===
+// === LOGICA DE LOGIN GOOGLE ===
         async function handleCredentialResponse(response) {
             try {
+                console.log("Se trimite token-ul catre server..."); // Debug
                 const res = await fetch('/api/auth/google', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ credential: response.credential })
                 });
+                
                 const data = await res.json();
+                console.log("Raspuns de la server:", data); // Debug in consola
+
                 if(data.token) {
                     localStorage.setItem('viralio_token', data.token);
                     showAppScreen(data.user);
+                } else {
+                    // Daca serverul a dat eroare, sa ne apara pe ecran!
+                    alert("Eroare de la server: " + (data.error || "Nu s-a primit token-ul. Verifica Client ID-ul din .env"));
                 }
-            } catch (e) { alert('Eroare la autentificare!'); }
+            } catch (e) { 
+                console.error(e);
+                alert('Eroare gravă de conexiune la login!'); 
+            }
         }
 
         function showAppScreen(user) {
