@@ -5,7 +5,6 @@ const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const OpenAI = require('openai');
-// --- PACHETE NOI ---
 const mongoose = require('mongoose');
 const { OAuth2Client } = require('google-auth-library');
 const jwt = require('jsonwebtoken');
@@ -16,9 +15,8 @@ const PORT = process.env.PORT || 3000;
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-const isWindows = process.platform === 'win32';
-const YTDLP_PATH = isWindows ? path.join(__dirname, 'yt-dlp.exe') : '/usr/local/bin/yt-dlp';
-const FFMPEG_PATH = isWindows ? path.join(__dirname, 'ffmpeg.exe') : '/usr/bin/ffmpeg';
+// 100% SETARI PENTRU VPS COOLIFY (Fara Windows)
+const YTDLP_PATH = '/usr/local/bin/yt-dlp';
 const DOWNLOAD_DIR = path.join(__dirname, 'downloads');
 if (!fs.existsSync(DOWNLOAD_DIR)) fs.mkdirSync(DOWNLOAD_DIR);
 
@@ -38,13 +36,13 @@ const UserSchema = new mongoose.Schema({
     email: String,
     name: String,
     picture: String,
-    credits: { type: Number, default: 3 }, // Dam 3 credite gratis la inregistrare
+    credits: { type: Number, default: 3 },
     createdAt: { type: Date, default: Date.now }
 });
 const User = mongoose.model('User', UserSchema);
 
 // ==========================================
-// PROXY-UL TAU EVOMI
+// PROXY EVOMI & BYPASS
 // ==========================================
 const PROXY_URL = `http://banicualex6:MGqdTRZRtftV80I9MhSD@core-residential.evomi.com:1000`;
 const proxyArg = `--proxy "${PROXY_URL}"`;
@@ -74,16 +72,12 @@ const authenticate = (req, res, next) => {
 app.post('/api/auth/google', async (req, res) => {
     try {
         const { credential } = req.body;
-        
-        console.log("👉 Încerc verificare token cu Client ID:", process.env.GOOGLE_CLIENT_ID);
-        
         const ticket = await googleClient.verifyIdToken({
             idToken: credential,
             audience: process.env.GOOGLE_CLIENT_ID,
         });
         const payload = ticket.getPayload();
         
-        // Cautam utilizatorul in DB, daca nu e, il cream
         let user = await User.findOne({ googleId: payload.sub });
         if (!user) {
             console.log("Creăm utilizator nou:", payload.email);
@@ -92,65 +86,82 @@ app.post('/api/auth/google', async (req, res) => {
                 email: payload.email,
                 name: payload.name,
                 picture: payload.picture,
-                credits: 3 // 3 credite la înregistrare
+                credits: 3
             });
             await user.save();
         }
 
-        // Generam un Token de sesiune pentru site
         const sessionToken = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
-        
         res.json({ token: sessionToken, user: { name: user.name, picture: user.picture, credits: user.credits } });
     } catch (error) {
-        // AICI E MAGIA: Afișăm eroarea exactă trimisă de Google!
-        console.error("❌ EROARE CRITICĂ GOOGLE LOGIN:", error.message);
+        console.error("❌ EROARE GOOGLE LOGIN:", error.message);
         res.status(400).json({ error: "Eroare Google: " + error.message });
     }
 });
 
-// 2. Endpoint Verificare Profil (ca sa stie frontend-ul cate credite ai cand dai refresh)
+// 2. Verificare Profil
 app.get('/api/auth/me', authenticate, async (req, res) => {
     const user = await User.findById(req.userId);
     res.json({ user: { name: user.name, picture: user.picture, credits: user.credits } });
 });
 
-// 3. Logica de YT (Optimizata)
+// 3. Logica de YT (Curatare mizerii subtitrare)
 const getTranscriptAndTranslation = async (url) => {
     return new Promise((resolve) => {
         const command = `"${YTDLP_PATH}" ${proxyArg} ${bypassArgs} --write-auto-sub --skip-download --sub-lang en,ro --convert-subs vtt --output "${path.join(DOWNLOAD_DIR, 'temp_%(id)s')}" "${url}"`;
+        
         exec(command, { maxBuffer: 1024 * 1024 * 10, timeout: 60000 }, async (err) => {
             const files = fs.readdirSync(DOWNLOAD_DIR).filter(f => f.startsWith('temp_') && f.endsWith('.vtt'));
             let originalText = "";
-            if (files.length === 0) return resolve({ original: "Nu s-a găsit subtitrare.", translated: "Nu există text de tradus." });
+            
+            if (files.length === 0) {
+                return resolve({ original: "Nu s-a găsit subtitrare.", translated: "Nu există text de tradus." });
+            }
             
             const vttPath = path.join(DOWNLOAD_DIR, files[0]);
             let content = fs.readFileSync(vttPath, 'utf8');
-            content = content.replace(/WEBVTT/g, '').replace(/(\d{2}:\d{2}:\d{2}\.\d{3} --> \d{2}:\d{2}:\d{2}\.\d{3})/g, '').replace(/<[^>]*>/g, '');
+            
+            // CURATARE GUNOAIE DIN VTT (Magic Regex)
+            content = content
+                .replace(/WEBVTT/gi, '')
+                .replace(/Kind:[^\n]+/gi, '')
+                .replace(/Language:[^\n]+/gi, '')
+                .replace(/align:[^\n]+/gi, '')
+                .replace(/position:[^\n]+/gi, '')
+                .replace(/(\d{2}:\d{2}:\d{2}\.\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}\.\d{3}.*)/g, '')
+                .replace(/<[^>]*>/g, '') // scoate tag-urile HTML
+                .replace(/\[Music\]/gi, '') // Scoate parantezele cu muzica
+                .replace(/\[Muzică\]/gi, '');
+
+            // Eliminam liniile goale ramase si unim textul
             originalText = [...new Set(content.split('\n').map(l => l.trim()).filter(l => l.length > 2))].join(' ');
             fs.unlinkSync(vttPath);
+
+            // Definim textul limitat pentru GPT (Asta lipsea si dadea eroare!)
+            const textToTranslate = originalText.substring(0, 10000);
 
             try {
                 const completion = await openai.chat.completions.create({
                     messages: [
-                        { role: "system", content: "Ești un traducător profesionist. Tradu textul pe care îl primești în limba română, păstrând pe cât posibil formatul și sensul. Nu oferi explicații, returnează doar traducerea textului si tot odata cand apare music, scoate-l și lasă-mi, te rog, doar textul în sine, fără: Tip: subtitrări Limba: en aliniere: început poziție: 0%" },
+                        { role: "system", content: "Ești un traducător profesionist. Tradu textul pe care îl primești în limba română, păstrând pe cât posibil formatul și sensul. Returnează DOAR traducerea textului, fără absolut nicio altă explicație." },
                         { role: "user", content: textToTranslate }
                     ],
                     model: "gpt-4o-mini", 
                 });
                 resolve({ original: originalText, translated: completion.choices[0].message.content });
             } catch (e) {
-                resolve({ original: originalText, translated: "Eroare AI la traducere." });
+                console.error("Eroare OpenAI:", e.message);
+                resolve({ original: originalText, translated: "Eroare AI la traducere: " + e.message });
             }
         });
     });
 };
 
-// 4. Endpoint Procesare Video (PROTEJAT DE AUTENTIFICARE!)
+// 4. Endpoint Procesare Video
 app.post('/api/process-yt', authenticate, async (req, res) => {
     let { url } = req.body;
     if (!url) return res.status(400).json({ error: 'URL lipsă' });
 
-    // VERIFICARE CREDITE!
     const user = await User.findById(req.userId);
     if (user.credits <= 0) {
         return res.status(403).json({ error: "Nu mai ai credite! Cumpără un pachet pentru a continua." });
@@ -162,15 +173,17 @@ app.post('/api/process-yt', authenticate, async (req, res) => {
     const outputPath = path.join(DOWNLOAD_DIR, `${videoId}.mp4`);
 
     try {
-        const ffmpegArg = isWindows ? `--ffmpeg-location "${FFMPEG_PATH}"` : "";
-        const command = `"${YTDLP_PATH}" ${proxyArg} ${ffmpegArg} ${bypassArgs} -f "b[ext=mp4]/best" -o "${outputPath}" --no-check-certificates --no-playlist "${url}"`;
+        // Am scos ffmpegArg pt ca suntem 100% pe VPS Linux
+        const command = `"${YTDLP_PATH}" ${proxyArg} ${bypassArgs} -f "b[ext=mp4]/best" -o "${outputPath}" --no-check-certificates --no-playlist "${url}"`;
         
         const aiData = await getTranscriptAndTranslation(url);
 
         exec(command, { maxBuffer: 1024 * 1024 * 10, timeout: 180000 }, async (error, stdout, stderr) => {
-            if (error) return res.status(500).json({ error: "Eroare la descărcare. Serverul YouTube a refuzat conexiunea." });
+            if (error) {
+                console.error("Eroare YTDLP:", stderr);
+                return res.status(500).json({ error: "Eroare la descărcare. Serverul YouTube a refuzat conexiunea." });
+            }
             
-            // DACA A FOST SUCCES, SCADEM UN CREDIT!
             user.credits -= 1;
             await user.save();
 
@@ -179,7 +192,7 @@ app.post('/api/process-yt', authenticate, async (req, res) => {
                 downloadUrl: `/download/${videoId}.mp4`,
                 originalText: aiData.original,
                 translatedText: aiData.translated,
-                creditsLeft: user.credits // Trimitem creditele ramase in frontend
+                creditsLeft: user.credits 
             });
         });
     } catch (e) {
